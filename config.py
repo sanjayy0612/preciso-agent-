@@ -33,6 +33,7 @@ class Settings:
     extractions_dir: Path
     manifests_dir: Path
     openbb_home: Path
+    openbb_source_format: str
     default_form_types: tuple[str, ...]
     default_query_mode: str
 
@@ -53,6 +54,7 @@ def get_settings() -> Settings:
         extractions_dir=workspace_root / "extractions",
         manifests_dir=workspace_root / "manifests",
         openbb_home=openbb_home,
+        openbb_source_format=(os.getenv("OPENBB_SOURCE_FORMAT", "raw").strip().lower() or "raw"),
         default_form_types=tuple(
             item.strip().upper()
             for item in os.getenv("OPENBB_SEC_FORM_TYPES", "10-K,10-Q,8-K").split(",")

@@ -22,6 +22,20 @@
 
 This keeps the provider layer source-first and compatible with Preciso's parser-free contract.
 
+## OpenBB as the source layer
+
+OpenBB is the data provider for the agent in this repo. The workflow uses the OpenBB SEC fetchers to pull structured source material, then converts that into normalized Markdown and Preciso extraction JSON.
+
+In practice:
+
+1. The agent reads your prompt and decides whether it needs to fetch data or query the existing graph.
+2. If it needs data, `providers/openbb_provider.py` calls OpenBB fetchers for SEC filings, management discussion, and optional earnings context.
+3. The fetched material is written into `workspace/to_be_extracted/` as Markdown and `workspace/manifests/` as provenance records.
+4. Groq converts the source text into Preciso-compatible graph extraction JSON.
+5. Preciso ingests the JSON and the agent can optionally query the graph afterward.
+
+This is a good fit when you want one standardized source layer for finance workflows instead of wiring each vendor directly into the graph pipeline.
+
 ## Environment
 
 Create `preciso-agent/.env` with:
@@ -47,6 +61,8 @@ cd preciso-agent
 python3 main.py
 ```
 
+If you want the agent to use a different workspace or a different Preciso checkout, set `PRECISO_AGENT_WORKSPACE` and `PRECISO_REPO_ROOT` in `.env` before running.
+
 ## Example prompts
 
 - `Fetch AAPL latest filing data from OpenBB, ingest it into Preciso, and stop after ingestion.`
@@ -64,4 +80,8 @@ python3 main.py
 - The current OpenBB install in this environment uses the newer package-builder layout, so the agent integrates with the SEC fetchers directly.
 - The agent uses a local `HOME` override while fetching OpenBB data so OpenBB cache/settings stay inside this project instead of trying to write to the global home directory.
 - Streamlit is intentionally out of scope for v1. The primary entrypoint is the CLI chat loop.
+
+## LinkedIn blog draft
+
+See [OPENBB_LINKEDIN_BLOG.md](OPENBB_LINKEDIN_BLOG.md) for a ready-to-post LinkedIn draft and a longer blog version.
 

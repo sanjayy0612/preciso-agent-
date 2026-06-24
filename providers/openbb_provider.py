@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from datetime import datetime
 from typing import Any
@@ -33,6 +34,7 @@ class OpenBBProvider:
         docs: list[NormalizedSourceDocument] = []
         fetched_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         form_types = ",".join(request.form_types)
+        source_format = self.settings.openbb_source_format
 
         if "sec_filing" in request.source_types:
             filings = await SecCompanyFilingsFetcher.fetch_data(
@@ -45,21 +47,41 @@ class OpenBBProvider:
                 {},
             )
             for filing in filings[: request.max_documents]:
-                body = self._render_filing_summary(filing)
+                filing_payload = filing.model_dump() if hasattr(filing, "model_dump") else {}
+                filing_symbol = str(getattr(filing, "symbol", request.ticker) or request.ticker)
+                filing_reference = str(
+                    getattr(filing, "report_url", None)
+                    or getattr(filing, "filing_url", None)
+                    or getattr(filing, "filing_detail_url", None)
+                    or ""
+                )
+                body = (
+                    self._render_filing_raw(
+                        symbol=filing_symbol,
+                        payload=filing_payload,
+                    )
+                    if source_format == "raw"
+                    else self._render_filing_summary(filing)
+                )
                 docs.append(
                     NormalizedSourceDocument(
-                        document_id=f"{request.ticker}_{filing.report_type}_{filing.filing_date}",
-                        title=f"{request.ticker} {filing.report_type} filed {filing.filing_date}",
+                        document_id=f"{filing_symbol}_{filing.report_type}_{filing.filing_date}",
+                        title=f"{filing_symbol} {filing.report_type} filed {filing.filing_date}",
                         source_type="sec_filing",
-                        ticker=request.ticker,
-                        source_reference=str(filing.report_url or filing.filing_url or ""),
+                        ticker=filing_symbol,
+                        source_reference=filing_reference,
                         event_date=str(filing.filing_date),
                         fetch_timestamp=fetched_at,
                         body_markdown=body,
                         metadata={
+                            "symbol": filing_symbol,
                             "report_type": filing.report_type,
                             "report_date": str(filing.report_date),
-                            "filing_url": str(filing.filing_url or ""),
+                            "filing_url": str(
+                                getattr(filing, "filing_url", None)
+                                or getattr(filing, "filing_detail_url", None)
+                                or ""
+                            ),
                             "report_url": str(filing.report_url or ""),
                             "primary_doc_description": str(filing.primary_doc_description or ""),
                         },
@@ -71,6 +93,7 @@ class OpenBBProvider:
                 {"symbol": request.ticker, "use_cache": True},
                 {},
             )
+            mda_payload = mda.model_dump() if hasattr(mda, "model_dump") else {}
             docs.append(
                 NormalizedSourceDocument(
                     document_id=f"{request.ticker}_management_discussion_{mda.period_ending}",
@@ -80,7 +103,11 @@ class OpenBBProvider:
                     source_reference=str(mda.url),
                     event_date=str(mda.period_ending),
                     fetch_timestamp=fetched_at,
-                    body_markdown=self._render_mda(mda),
+                    body_markdown=(
+                        self._render_mda_raw(symbol=request.ticker, payload=mda_payload)
+                        if source_format == "raw"
+                        else self._render_mda(mda)
+                    ),
                     metadata={
                         "calendar_year": int(mda.calendar_year),
                         "calendar_period": str(mda.calendar_period),
@@ -113,14 +140,20 @@ class OpenBBProvider:
 
     @staticmethod
     def _render_filing_summary(filing: Any) -> str:
+        symbol = str(getattr(filing, "symbol", "") or "UNKNOWN")
+        filing_url = str(
+            getattr(filing, "filing_url", None)
+            or getattr(filing, "filing_detail_url", None)
+            or ""
+        )
         return "\n".join(
             [
-                f"# {filing.symbol} {filing.report_type} filing",
+                f"# {symbol} {filing.report_type} filing",
                 "",
                 f"- Filing date: {filing.filing_date}",
                 f"- Report date: {filing.report_date}",
                 f"- Filing type: {filing.report_type}",
-                f"- Filing URL: {filing.filing_url}",
+                f"- Filing URL: {filing_url}",
                 f"- Report URL: {filing.report_url}",
                 f"- Primary document description: {filing.primary_doc_description or 'N/A'}",
                 "",
@@ -166,5 +199,29 @@ class OpenBBProvider:
                 "- Pair with the latest 10-K or 10-Q filing metadata.",
                 "- Pair with management discussion text for narrative context.",
                 "- Use graph queries after ingestion to ask about recurring risks, strategy shifts, or management themes.",
+            ]
+        )
+
+    @staticmethod
+    def _render_filing_raw(*, symbol: str, payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                f"# {symbol} SEC filing (raw OpenBB payload)",
+                "",
+                "```json",
+                json.dumps(payload, indent=2, default=str),
+                "```",
+            ]
+        )
+
+    @staticmethod
+    def _render_mda_raw(*, symbol: str, payload: dict[str, Any]) -> str:
+        return "\n".join(
+            [
+                f"# {symbol} management discussion (raw OpenBB payload)",
+                "",
+                "```json",
+                json.dumps(payload, indent=2, default=str),
+                "```",
             ]
         )
