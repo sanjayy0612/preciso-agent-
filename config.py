@@ -32,10 +32,14 @@ class Settings:
     sources_dir: Path
     extractions_dir: Path
     manifests_dir: Path
+    inbox_dir: Path
     openbb_home: Path
     openbb_source_format: str
     default_form_types: tuple[str, ...]
     default_query_mode: str
+    preciso_client_mode: str
+    mcp_command: str
+    mcp_args: tuple[str, ...]
 
 
 def get_settings() -> Settings:
@@ -44,6 +48,23 @@ def get_settings() -> Settings:
         os.getenv("PRECISO_REPO_ROOT", PARENT_PRECIOSO_ROOT)
     ).resolve()
     openbb_home = Path(os.getenv("OPENBB_HOME", PROJECT_ROOT / ".openbb_platform")).resolve()
+    inbox_dir = Path(os.getenv("PRECISO_AGENT_INBOX", workspace_root / "inbox")).resolve()
+
+    # How the agent reaches the Preciso graph engine:
+    #   "mcp"       -> talk to the graphrag-mcp server over stdio (same product any
+    #                  external agent uses). This is the default.
+    #   "inprocess" -> import the parent repo's tool functions directly (faster, but
+    #                  couples the agent to the parent's Python internals).
+    client_mode = (os.getenv("PRECISO_CLIENT_MODE", "mcp").strip().lower() or "mcp")
+
+    default_launcher = preciso_repo_root / "scripts" / "mcp_launcher.sh"
+    mcp_command = os.getenv("PRECISO_MCP_COMMAND", "/bin/sh").strip() or "/bin/sh"
+    mcp_args_env = os.getenv("PRECISO_MCP_ARGS", "").strip()
+    mcp_args = (
+        tuple(part for part in mcp_args_env.split() if part)
+        if mcp_args_env
+        else (str(default_launcher),)
+    )
 
     return Settings(
         groq_api_key=os.getenv("GROQ_API_KEY", "").strip(),
@@ -53,6 +74,7 @@ def get_settings() -> Settings:
         sources_dir=workspace_root / "to_be_extracted",
         extractions_dir=workspace_root / "extractions",
         manifests_dir=workspace_root / "manifests",
+        inbox_dir=inbox_dir,
         openbb_home=openbb_home,
         openbb_source_format=(os.getenv("OPENBB_SOURCE_FORMAT", "raw").strip().lower() or "raw"),
         default_form_types=tuple(
@@ -61,6 +83,9 @@ def get_settings() -> Settings:
             if item.strip()
         ),
         default_query_mode=os.getenv("PRECISO_QUERY_MODE", "mix").strip() or "mix",
+        preciso_client_mode=client_mode,
+        mcp_command=mcp_command,
+        mcp_args=mcp_args,
     )
 
 
@@ -70,6 +95,7 @@ def ensure_workspace(settings: Settings) -> None:
         settings.sources_dir,
         settings.extractions_dir,
         settings.manifests_dir,
+        settings.inbox_dir,
         settings.openbb_home,
     ):
         path.mkdir(parents=True, exist_ok=True)

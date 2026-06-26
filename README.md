@@ -52,7 +52,32 @@ PRECISO_REPO_ROOT=/absolute/path/to/preciso-graphrag
 PRECISO_AGENT_WORKSPACE=/absolute/path/to/workspace
 OPENBB_SEC_FORM_TYPES=10-K,10-Q,8-K
 PRECISO_QUERY_MODE=mix
+
+# How the agent reaches the Preciso graph engine.
+#   mcp       -> talk to the graphrag-mcp stdio server (default; same product
+#                external agents like Claude Code / Codex use)
+#   inprocess -> import the parent repo's tool functions directly
+PRECISO_CLIENT_MODE=mcp
+# Override the MCP server launch command if needed (defaults to the repo launcher)
+# PRECISO_MCP_COMMAND=/bin/sh
+# PRECISO_MCP_ARGS=scripts/mcp_launcher.sh
+
+# Folder the agent reads your own files from (default: workspace/inbox)
+PRECISO_AGENT_INBOX=/absolute/path/to/inbox
 ```
+
+## Data sources
+
+The agent can build the graph from two source layers:
+
+1. **OpenBB** — pulls SEC filings and management discussion for a ticker.
+2. **Local inbox** — your own documents. Drop Markdown/text files into
+   `PRECISO_AGENT_INBOX` (default `workspace/inbox/`) and ask the agent to ingest
+   them. Nothing is fetched from the network; the document text stays local until
+   you point the embedding/LLM provider at a remote service.
+
+The agent picks the source from your prompt — mention "my files", "the inbox", or
+"the folder" to use local documents; otherwise it defaults to OpenBB SEC data.
 
 ## Run
 
@@ -67,10 +92,12 @@ If you want the agent to use a different workspace or a different Preciso checko
 
 - `Fetch AAPL latest filing data from OpenBB, ingest it into Preciso, and stop after ingestion.`
 - `Fetch NVDA filing and management discussion data, ingest it, then tell me the main strategic themes.`
+- `Ingest my files in the inbox folder, then summarize the key themes.`
 - `Query the existing graph for TSLA risk factors.`
 
 ## Workspace
 
+- `workspace/inbox/`: drop your own source files here for the local data source
 - `workspace/to_be_extracted/`: normalized source Markdown files
 - `workspace/extractions/`: graph extraction JSON files
 - `workspace/manifests/`: provenance manifests for stored documents

@@ -6,12 +6,19 @@ from pydantic import BaseModel, Field
 
 
 RunMode = Literal["fetch_ingest", "fetch_ingest_query", "query_existing"]
-SourceType = Literal["sec_filing", "management_discussion", "earnings_calendar"]
+SourceType = Literal[
+    "sec_filing",
+    "management_discussion",
+    "earnings_calendar",
+    "local_document",
+]
+DataSource = Literal["openbb", "local"]
 
 
 class ProviderRequest(BaseModel):
     company: str
     ticker: str
+    data_source: DataSource = "openbb"
     source_types: list[SourceType] = Field(default_factory=list)
     form_types: list[str] = Field(default_factory=list)
     max_documents: int = 3
@@ -23,6 +30,7 @@ class ParsedIntent(BaseModel):
     company: str
     ticker: str | None = None
     run_mode: RunMode = "fetch_ingest"
+    data_source: DataSource = "openbb"
     source_types: list[SourceType] = Field(default_factory=list)
     query_after_ingest: str | None = None
     existing_graph_query: str | None = None

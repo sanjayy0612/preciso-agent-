@@ -16,17 +16,20 @@ Decide:
 - company: company name or ticker from the user's request
 - ticker: ticker if explicit, else null
 - run_mode: one of fetch_ingest, fetch_ingest_query, query_existing
-- source_types: choose from sec_filing, management_discussion, earnings_calendar
+- data_source: "openbb" to pull SEC data, or "local" to use the user's own files in the inbox folder
+- source_types: choose from sec_filing, management_discussion, earnings_calendar, local_document
 - query_after_ingest: the follow-up graph question if the user wants one
 - existing_graph_query: only for query_existing
 - max_documents: choose a small integer 1-5
 
 Rules:
-- Default to SEC-focused data for finance requests.
+- Default to SEC-focused data for finance requests (data_source "openbb").
+- Use data_source "local" with source_types ["local_document"] when the user refers to their own
+  files, the inbox/drop folder, "my documents", "the folder", or files they already placed locally.
 - If the user asks to "ingest", "store", or "fetch and build", use fetch_ingest unless they also ask a question afterward.
 - If the user asks a question after requesting fetch/ingest, use fetch_ingest_query.
 - If the user only asks about already-ingested data, use query_existing.
-- Prefer source_types sec_filing and management_discussion.
+- Prefer source_types sec_filing and management_discussion for openbb requests.
 - Add earnings_calendar when earnings context or latest earnings is requested.
 """
 
@@ -168,9 +171,15 @@ def _fallback_intent(user_prompt: str) -> ParsedIntent:
     if "existing graph" in lowered or lowered.startswith("query "):
         run_mode = "query_existing"
 
-    source_types = ["sec_filing", "management_discussion"]
-    if "earnings" in lowered:
-        source_types.append("earnings_calendar")
+    local_tokens = ("inbox", "my file", "my doc", "local folder", "the folder", "drop folder", "uploaded")
+    data_source = "local" if any(token in lowered for token in local_tokens) else "openbb"
+
+    if data_source == "local":
+        source_types = ["local_document"]
+    else:
+        source_types = ["sec_filing", "management_discussion"]
+        if "earnings" in lowered:
+            source_types.append("earnings_calendar")
 
     words = [word.strip(",.?") for word in user_prompt.split()]
     ticker = next((word.upper() for word in words if 1 <= len(word) <= 5 and word.isalpha() and word.upper() == word), None)
@@ -180,6 +189,7 @@ def _fallback_intent(user_prompt: str) -> ParsedIntent:
         company=company,
         ticker=ticker,
         run_mode=run_mode,  # type: ignore[arg-type]
+        data_source=data_source,  # type: ignore[arg-type]
         source_types=source_types,  # type: ignore[arg-type]
         query_after_ingest=user_prompt if run_mode == "fetch_ingest_query" else None,
         existing_graph_query=user_prompt if run_mode == "query_existing" else None,

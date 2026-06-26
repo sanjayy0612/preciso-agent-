@@ -7,9 +7,15 @@ from langgraph.graph import END, START, StateGraph
 from config import Settings
 from extraction import build_extractions
 from groq_client import GroqAgentClient
-from models import AgentState, ParsedIntent, PrecisoIngestResult, ProviderRequest
-from preciso_client.client import PrecisoClient
-from providers.openbb_provider import OpenBBProvider
+from models import (
+    AgentState,
+    ParsedIntent,
+    PrecisoIngestResult,
+    ProviderRequest,
+    SourceType,
+)
+from preciso_client import build_preciso_client
+from providers import LocalFolderProvider, OpenBBProvider
 from storage.files import write_source_documents
 
 
@@ -17,8 +23,9 @@ class PrecisoAgentWorkflow:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.groq_client = GroqAgentClient(settings)
-        self.provider = OpenBBProvider(settings)
-        self.preciso_client = PrecisoClient(settings)
+        self.openbb_provider = OpenBBProvider(settings)
+        self.local_provider = LocalFolderProvider(settings)
+        self.preciso_client = build_preciso_client(settings)
         self.graph = self._build_graph()
 
     def run(self, prompt: str) -> AgentState:
@@ -77,10 +84,16 @@ class PrecisoAgentWorkflow:
 
     def _prepare_provider_request(self, state: AgentState) -> AgentState:
         intent = state["parsed_intent"]
+        default_source_types: list[SourceType] = (
+            ["local_document"]
+            if intent.data_source == "local"
+            else ["sec_filing", "management_discussion"]
+        )
         provider_request = ProviderRequest(
             company=intent.company,
             ticker=(intent.ticker or intent.company).upper(),
-            source_types=intent.source_types or ["sec_filing", "management_discussion"],
+            data_source=intent.data_source,
+            source_types=intent.source_types or default_source_types,
             form_types=list(self.settings.default_form_types),
             max_documents=intent.max_documents,
             run_mode=intent.run_mode,
@@ -91,10 +104,14 @@ class PrecisoAgentWorkflow:
     def _fetch_documents(self, state: AgentState) -> AgentState:
         request = state["provider_request"]
         errors = list(state.get("errors", []))
+        if request.data_source == "local":
+            provider, label = self.local_provider, "Local inbox"
+        else:
+            provider, label = self.openbb_provider, "OpenBB"
         try:
-            documents = self.provider.fetch_documents(request)
+            documents = provider.fetch_documents(request)
         except Exception as exc:
-            errors.append(f"OpenBB fetch failed: {exc}")
+            errors.append(f"{label} fetch failed: {exc}")
             documents = []
         return {"normalized_documents": documents, "errors": errors}
 

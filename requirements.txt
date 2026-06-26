@@ -1,5 +1,6 @@
 groq
 langgraph
 langchain-core
+mcp
 openbb-core
 openbb-sec
